@@ -43,9 +43,17 @@ Example:
     err := ysql.QueryRow(conn, ctx, `select first_name, last_name from users where id = $1;`, id).Scan(&user)
     
     // reading many rows: 
-    rows, err := ysql.QueryRow(conn, ctx, `select first_name from users where $=first_name;`, user)
+    rows, err := ysql.Query(conn, ctx, `select first_name from users where $=first_name;`, user)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
     for rows.Next() {
         var u User
-        err := rows.Scan(&u)
-        // etc
+        if err := rows.Scan(&u); err != nil {
+            return err
+        }
+    }
+    if err := rows.Err(); err != nil {
+        return err
     }
