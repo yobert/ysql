@@ -1,19 +1,21 @@
 package ysql
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
-	//"github.com/davecgh/go-spew/spew"
 )
 
 type Rows struct {
 	pgxrows pgx.Rows
 
+	flen   int
 	fields []pgproto3.FieldDescription
+	names  []string
 }
 
 func (r *Rows) Close() {
@@ -33,68 +35,24 @@ func (r *Rows) Next() bool {
 }
 func (r *Rows) Scan(args ...interface{}) error {
 
-	//spew.Dump(args)
-
 	if r.fields == nil {
 		r.fields = r.pgxrows.FieldDescriptions()
+		r.flen = len(r.fields)
+		r.names = make([]string, r.flen)
+		for i, f := range r.fields {
+			r.names[i] = string(f.Name)
+		}
 	}
 
 	newargs := make([]interface{}, len(r.fields))
-	min := 0
 
-	fields := make(map[string]int, len(r.fields))
-	for i, f := range r.fields {
-		fields[string(f.Name)] = i
-	}
-
-argloop:
 	for _, arg := range args {
 		val := reflect.ValueOf(arg)
-		typ := val.Type()
 
-		if typ.Kind() != reflect.Ptr || val.Elem().Type().Kind() != reflect.Struct {
-			for ii := min; ii < len(newargs); ii++ {
-				if newargs[ii] == nil {
-					min = ii
-					newargs[ii] = arg
-					continue argloop
-				}
-			}
-		}
-
-		val = val.Elem()
-		typ = val.Type()
-
-		for i := 0; i < typ.NumField(); i++ {
-			ftype := typ.Field(i)
-
-			key := strings.ToLower(ftype.Name)
-
-			if tv, ok := ftype.Tag.Lookup("ysql"); ok {
-				t, _ := parseTag(tv)
-				if t != "" {
-					key = t
-				}
-
-				if t == "-" {
-					continue
-				}
-			}
-
-			fi, ok := fields[key]
-			if ok {
-				// Don't overwrite if we already have a destination.
-				// This way you can do something like Scan(&id, &record) and
-				// if record happens to have a field "id" it won't blow away your &id part.
-				if newargs[fi] == nil {
-					val := val.Field(i).Addr()
-					newargs[fi] = val.Interface()
-				}
-			}
+		if err := walk(r, val, newargs); err != nil {
+			return err
 		}
 	}
-
-	//spew.Dump(newargs)
 
 	return r.pgxrows.Scan(newargs...)
 }
@@ -103,4 +61,61 @@ func (r *Rows) Values() ([]interface{}, error) {
 }
 func (r *Rows) RawValues() [][]byte {
 	return r.pgxrows.RawValues()
+}
+
+func walk(r *Rows, val reflect.Value, newargs []interface{}) error {
+
+	typ := val.Type()
+
+	// Special treatment for time.Time--- it's a struct, but we don't want to dissect its fields.
+	if (typ.Kind() != reflect.Struct || typ.PkgPath() == "time") && (typ.Kind() != reflect.Ptr || val.Elem().Type().Kind() != reflect.Struct || val.Elem().Type().PkgPath() == "time") {
+		// Doesn't look like a struct or struct pointer? Pass it down the line to pgx, hopefully
+		// it's something scannable the standard way.
+		for ii := 0; ii < r.flen; ii++ {
+			if newargs[ii] == nil {
+				newargs[ii] = val.Interface()
+				return nil
+			}
+		}
+		return fmt.Errorf("Scan called with more receivers than query result fields")
+	}
+
+	if typ.Kind() == reflect.Ptr {
+		val = val.Elem()
+		typ = val.Type()
+	}
+
+	for i := 0; i < typ.NumField(); i++ {
+		ftype := typ.Field(i)
+
+		if ftype.Type.Kind() == reflect.Struct {
+			if err := walk(r, val.Field(i), newargs); err != nil {
+				return err
+			}
+			continue
+		}
+
+		key := strings.ToLower(ftype.Name)
+
+		if tv, ok := ftype.Tag.Lookup("ysql"); ok {
+			t, _ := parseTag(tv)
+			if t != "" {
+				key = t
+			}
+
+			if t == "-" {
+				continue
+			}
+		}
+
+		for ii := 0; ii < r.flen; ii++ {
+			if newargs[ii] == nil && r.names[ii] == key {
+				val := val.Field(i).Addr()
+				newargs[ii] = val.Interface()
+				break
+			}
+		}
+	}
+
+	return nil
 }
