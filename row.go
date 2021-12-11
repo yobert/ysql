@@ -3,7 +3,7 @@ package ysql
 // mimic how pgx does QueryRow except we're not bothering with an interface
 type Row Rows
 
-func (r *Row) Scan(dest ...interface{}) (err error) {
+func (r *Row) Scan(dest ...interface{}) error {
 	rows := (*Rows)(r)
 
 	if rows.Err() != nil {
@@ -17,7 +17,10 @@ func (r *Row) Scan(dest ...interface{}) (err error) {
 		return rows.Err()
 	}
 
-	rows.Scan(dest...)
+	err := rows.Scan(dest...)
 	rows.Close()
+	if err != nil {
+		return err
+	}
 	return rows.Err()
 }
