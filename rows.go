@@ -77,7 +77,7 @@ func walk(r *Rows, val reflect.Value, newargs []interface{}) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("Scan called with more receivers than query result fields")
+		return fmt.Errorf("Scan called with more receivers (%d) than query result fields (%d)", len(newargs), r.flen)
 	}
 
 	if typ.Kind() == reflect.Ptr {
@@ -88,7 +88,8 @@ func walk(r *Rows, val reflect.Value, newargs []interface{}) error {
 	for i := 0; i < typ.NumField(); i++ {
 		ftype := typ.Field(i)
 
-		if ftype.Type.Kind() == reflect.Struct {
+		// Another important special case for time.Time. Need to think of a better way to do this.
+		if ftype.Type.Kind() == reflect.Struct && ftype.Type.PkgPath() != "time" {
 			if err := walk(r, val.Field(i), newargs); err != nil {
 				return err
 			}
