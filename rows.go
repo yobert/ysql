@@ -5,16 +5,15 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Rows struct {
 	pgxrows pgx.Rows
 
 	flen   int
-	fields []pgproto3.FieldDescription
+	fields []pgconn.FieldDescription
 	names  []string
 }
 
@@ -27,13 +26,13 @@ func (r *Rows) Err() error {
 func (r *Rows) CommandTag() pgconn.CommandTag {
 	return r.pgxrows.CommandTag()
 }
-func (r *Rows) FieldDescriptions() []pgproto3.FieldDescription {
+func (r *Rows) FieldDescriptions() []pgconn.FieldDescription {
 	return r.pgxrows.FieldDescriptions()
 }
 func (r *Rows) Next() bool {
 	return r.pgxrows.Next()
 }
-func (r *Rows) Scan(args ...interface{}) error {
+func (r *Rows) Scan(args ...any) error {
 
 	if r.fields == nil {
 		r.fields = r.pgxrows.FieldDescriptions()
@@ -61,6 +60,9 @@ func (r *Rows) Values() ([]interface{}, error) {
 }
 func (r *Rows) RawValues() [][]byte {
 	return r.pgxrows.RawValues()
+}
+func (r *Rows) Conn() *pgx.Conn {
+	return r.pgxrows.Conn()
 }
 
 func walk(r *Rows, val reflect.Value, newargs []interface{}) error {
