@@ -1,7 +1,7 @@
 # ysql
-Make composing string SQL for github.com/jackc/pgx/v4 a little easier
+Make composing string SQL for github.com/jackc/pgx/v5 a little easier
 
-This introduces a couple of new features to the fantastic github.com/jackc/pgx/v4.
+This introduces a couple of new features to the fantastic github.com/jackc/pgx/v5.
 
 1) You can Scan() into a struct and it will match by field name (or struct tag `ysql:"field_name"`).
   There are some other cool packages that do this already (https://github.com/jmoiron/sqlx or https://github.com/georgysavva/scany).
